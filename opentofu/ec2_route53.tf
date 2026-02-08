@@ -170,7 +170,13 @@ resource "aws_instance" "blog_web" {
     set -euxo pipefail
 
     dnf update -y
-    dnf install -y docker docker-compose-plugin amazon-ssm-agent
+    dnf install -y docker amazon-ssm-agent
+    # docker-compose-plugin is not available in AL2023 repos;
+    # install the compose CLI plugin from Docker's GitHub releases
+    mkdir -p /usr/libexec/docker/cli-plugins
+    curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
+      -o /usr/libexec/docker/cli-plugins/docker-compose
+    chmod +x /usr/libexec/docker/cli-plugins/docker-compose
     systemctl enable --now docker
     systemctl enable --now amazon-ssm-agent
     usermod -aG docker ec2-user
