@@ -30,7 +30,7 @@ concurrency:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION || 'eu-west-1' }}
-  S3_BUCKET_NAME: ${{ vars.S3_BUCKET_NAME }}
+  S3_BUCKET_NAME: ${{ vars.S3_BUCKET_NAME || secrets.S3_BUCKET_NAME }}
   ECR_API_REPOSITORY: ${{ vars.ECR_API_REPOSITORY }}
   ECR_WEB_REPOSITORY: ${{ vars.ECR_WEB_REPOSITORY }}
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || secrets.TF_STATE_BUCKET }}
@@ -84,65 +84,6 @@ jobs:
           else
             echo "TF_STATE_BUCKET is not set in vars or secrets" >&2
             exit 1
-          fi
-
-      - name: Import existing IAM and security group resources (if present)
-        working-directory: opentofu
-        run: |
-          set -euo pipefail
-
-          ROLE_NAME="dev-blog-web-role"
-          PROFILE_NAME="dev-blog-web-profile"
-          SG_NAME="dev-blog-web-sg"
-
-          if aws iam get-role --role-name "${ROLE_NAME}" >/dev/null 2>&1; then
-            tofu state show aws_iam_role.blog_ec2 >/dev/null 2>&1 || tofu import aws_iam_role.blog_ec2 "${ROLE_NAME}"
-
-            tofu state show aws_iam_role_policy_attachment.blog_ec2_ssm >/dev/null 2>&1 || \
-              tofu import aws_iam_role_policy_attachment.blog_ec2_ssm \
-                "${ROLE_NAME}/arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-
-            tofu state show aws_iam_role_policy_attachment.blog_ec2_ecr_read >/dev/null 2>&1 || \
-              tofu import aws_iam_role_policy_attachment.blog_ec2_ecr_read \
-                "${ROLE_NAME}/arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-
-            tofu state show aws_iam_role_policy.blog_ec2_s3_read >/dev/null 2>&1 || \
-              tofu import aws_iam_role_policy.blog_ec2_s3_read "${ROLE_NAME}:dev-blog-web-s3-read"
-          fi
-
-          if aws iam get-instance-profile --instance-profile-name "${PROFILE_NAME}" >/dev/null 2>&1; then
-            tofu state show aws_iam_instance_profile.blog_ec2 >/dev/null 2>&1 || \
-              tofu import aws_iam_instance_profile.blog_ec2 "${PROFILE_NAME}"
-          fi
-
-          DEFAULT_VPC_ID=$(aws ec2 describe-vpcs \
-            --filters Name=isDefault,Values=true \
-            --query 'Vpcs[0].VpcId' \
-            --output text)
-
-          if [ "${DEFAULT_VPC_ID}" != "None" ]; then
-            SG_ID=$(aws ec2 describe-security-groups \
-              --filters Name=group-name,Values="${SG_NAME}" Name=vpc-id,Values="${DEFAULT_VPC_ID}" \
-              --query 'SecurityGroups[0].GroupId' \
-              --output text)
-
-            if [ "${SG_ID}" != "None" ]; then
-              tofu state show aws_security_group.blog_web >/dev/null 2>&1 || \
-                tofu import aws_security_group.blog_web "${SG_ID}"
-            fi
-          fi
-
-          ZONE_ID=$(aws route53 list-hosted-zones-by-name \
-            --dns-name "aacecan.com" \
-            --query 'HostedZones[0].Id' \
-            --output text | sed 's|/hostedzone/||')
-
-          if [ -n "${ZONE_ID}" ] && [ "${ZONE_ID}" != "None" ]; then
-            tofu state show aws_route53_record.dev >/dev/null 2>&1 || \
-              tofu import aws_route53_record.dev "${ZONE_ID}_dev.aacecan.com_A"
-
-            tofu state show aws_route53_record.www_dev >/dev/null 2>&1 || \
-              tofu import aws_route53_record.www_dev "${ZONE_ID}_www.dev.aacecan.com_A"
           fi
 
       - name: OpenTofu apply
