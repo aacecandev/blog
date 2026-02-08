@@ -31,8 +31,8 @@ concurrency:
 env:
   AWS_REGION: ${{ vars.AWS_REGION || 'eu-west-1' }}
   S3_BUCKET_NAME: ${{ vars.S3_BUCKET_NAME || secrets.S3_BUCKET_NAME }}
-  ECR_API_REPOSITORY: ${{ vars.ECR_API_REPOSITORY }}
-  ECR_WEB_REPOSITORY: ${{ vars.ECR_WEB_REPOSITORY }}
+  ECR_API_REPOSITORY: ${{ vars.ECR_API_REPOSITORY || secrets.ECR_API_REPOSITORY }}
+  ECR_WEB_REPOSITORY: ${{ vars.ECR_WEB_REPOSITORY || secrets.ECR_WEB_REPOSITORY }}
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || secrets.TF_STATE_BUCKET }}
   TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'blog/opentofu.tfstate' }}
 
