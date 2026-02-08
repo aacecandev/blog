@@ -46,35 +46,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Detect changed paths
-        id: changes
-        run: |
-          set -euo pipefail
-
-          BASE="${{ github.event.before }}"
-          if [ -z "${BASE}" ] || [ "${BASE}" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
-            echo "First push, manual trigger, or base commit unavailable — building everything"
-            echo "api=true"  >> "$GITHUB_OUTPUT"
-            echo "web=true"  >> "$GITHUB_OUTPUT"
-          else
-            CHANGED=$(git diff --name-only "${BASE}" HEAD)
-            echo "Changed files:"
-            echo "${CHANGED}"
-
-            if echo "${CHANGED}" | grep -q '^src/backend/'; then
-              echo "api=true"  >> "$GITHUB_OUTPUT"
-            else
-              echo "api=false" >> "$GITHUB_OUTPUT"
-            fi
-            if echo "${CHANGED}" | grep -q '^src/frontend/'; then
-              echo "web=true"  >> "$GITHUB_OUTPUT"
-            else
-              echo "web=false" >> "$GITHUB_OUTPUT"
-            fi
-          fi
 
       - name: Configure AWS credentials (OIDC)
         if: env.AWS_ROLE_TO_ASSUME != ''
@@ -145,7 +116,6 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build and push backend image
-        if: steps.changes.outputs.api == 'true'
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
@@ -158,7 +128,6 @@ jobs:
           docker push ${ECR_REGISTRY}/${ECR_API_REPOSITORY}:latest
 
       - name: Build and push frontend image
-        if: steps.changes.outputs.web == 'true'
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
@@ -212,20 +181,13 @@ jobs:
           echo "Cloud-init finished."
 
       - name: Deploy on EC2 via SSM
-        if: steps.changes.outputs.api == 'true' || steps.changes.outputs.web == 'true'
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           INSTANCE_ID: ${{ steps.infra.outputs.instance_id }}
-          IMAGE_TAG: ${{ github.sha }}
-          API_CHANGED: ${{ steps.changes.outputs.api }}
-          WEB_CHANGED: ${{ steps.changes.outputs.web }}
+          API_IMAGE: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_API_REPOSITORY }}:latest
+          WEB_IMAGE: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WEB_REPOSITORY }}:latest
         run: |
           set -euo pipefail
-
-          API_TAG=$( [ "${API_CHANGED}" = "true" ] && echo "${IMAGE_TAG}" || echo "latest" )
-          WEB_TAG=$( [ "${WEB_CHANGED}" = "true" ] && echo "${IMAGE_TAG}" || echo "latest" )
-          API_IMAGE="${ECR_REGISTRY}/${ECR_API_REPOSITORY}:${API_TAG}"
-          WEB_IMAGE="${ECR_REGISTRY}/${ECR_WEB_REPOSITORY}:${WEB_TAG}"
 
           cat > ssm-commands.json <<EOF
           {
