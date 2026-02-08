@@ -49,8 +49,8 @@ RUN apk add --no-cache ca-certificates tzdata libffi openssl curl
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy application code and env
-COPY . ./app
+# Copy application code as "backend" package so uvicorn can import backend.main
+COPY . ./backend
 
 EXPOSE 8000
 
