@@ -140,12 +140,54 @@ jobs:
           docker push ${ECR_REGISTRY}/${ECR_WEB_REPOSITORY}:${IMAGE_TAG}
           docker push ${ECR_REGISTRY}/${ECR_WEB_REPOSITORY}:latest
 
+      - name: Wait for EC2 cloud-init to finish
+        env:
+          INSTANCE_ID: ${{ steps.infra.outputs.instance_id }}
+        run: |
+          set -euo pipefail
+
+          echo "Waiting for SSM agent to come online..."
+          for i in $(seq 1 30); do
+            STATUS=$(aws ssm describe-instance-information \
+              --filters "Key=InstanceIds,Values=${INSTANCE_ID}" \
+              --query "InstanceInformationList[0].PingStatus" \
+              --output text 2>/dev/null || echo "None")
+            if [ "${STATUS}" = "Online" ]; then
+              echo "SSM agent is online after ${i} attempts."
+              break
+            fi
+            echo "  Attempt ${i}/30: SSM status=${STATUS}, waiting 10s..."
+            sleep 10
+          done
+
+          if [ "${STATUS}" != "Online" ]; then
+            echo "::error::SSM agent not online after 5 minutes. Check EC2 instance ${INSTANCE_ID}."
+            exit 1
+          fi
+
+          echo "Waiting for cloud-init to finish on the instance..."
+          INIT_CMD_ID=$(aws ssm send-command \
+            --instance-ids "${INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Wait for cloud-init" \
+            --parameters '{"commands":["cloud-init status --wait"]}' \
+            --timeout-seconds 600 \
+            --query "Command.CommandId" \
+            --output text)
+
+          aws ssm wait command-executed \
+            --command-id "${INIT_CMD_ID}" \
+            --instance-id "${INSTANCE_ID}"
+          echo "Cloud-init finished."
+
       - name: Deploy on EC2 via SSM
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           INSTANCE_ID: ${{ steps.infra.outputs.instance_id }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          set -euo pipefail
+
           API_IMAGE="${ECR_REGISTRY}/${ECR_API_REPOSITORY}:${IMAGE_TAG}"
           WEB_IMAGE="${ECR_REGISTRY}/${ECR_WEB_REPOSITORY}:${IMAGE_TAG}"
 
@@ -153,6 +195,7 @@ jobs:
           {
             "commands": [
               "set -euo pipefail",
+              "cloud-init status --wait || true",
               "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}",
               "cd /opt/dev-blog",
               "echo API_IMAGE='${API_IMAGE}' > .env",
@@ -165,15 +208,40 @@ jobs:
           }
           EOF
 
-          aws ssm send-command \
+          COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${INSTANCE_ID}" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy dev-blog ${GITHUB_SHA}" \
             --parameters file://ssm-commands.json \
+            --timeout-seconds 300 \
+            --output-s3-bucket-name "${S3_BUCKET_NAME}" \
+            --output-s3-key-prefix "ssm-output/deploy" \
             --query "Command.CommandId" \
-            --output text > command_id.txt
+            --output text)
 
-          COMMAND_ID=$(cat command_id.txt)
+          echo "SSM Command ID: ${COMMAND_ID}"
+          echo "command_id=${COMMAND_ID}" >> "$GITHUB_OUTPUT"
+
           aws ssm wait command-executed \
             --command-id "${COMMAND_ID}" \
-            --instance-id "${INSTANCE_ID}"
+            --instance-id "${INSTANCE_ID}" || true
+
+          # Fetch and display command output regardless of success/failure
+          RESULT=$(aws ssm get-command-invocation \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${INSTANCE_ID}" \
+            --output json)
+
+          STATUS=$(echo "${RESULT}" | jq -r '.Status')
+          echo "::group::SSM Command Status: ${STATUS}"
+          echo "${RESULT}" | jq -r '.StandardOutputContent // "No stdout"'
+          echo "::endgroup::"
+
+          if [ "${STATUS}" != "Success" ]; then
+            echo "::error::SSM command failed with status: ${STATUS}"
+            echo "::group::stderr"
+            echo "${RESULT}" | jq -r '.StandardErrorContent // "No stderr"'
+            echo "::endgroup::"
+            echo "Full output also written to s3://${S3_BUCKET_NAME}/ssm-output/deploy/"
+            exit 1
+          fi
