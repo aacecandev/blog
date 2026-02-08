@@ -3,6 +3,7 @@
 # Builder: Alpine + uv
 
 FROM docker.io/python:3.11-alpine AS builder
+SHELL ["/bin/ash", "-o", "pipefail", "-c"]
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -23,7 +24,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Install Python dependencies with uv
 RUN uv pip install \
     fastapi==0.111.0 \
-    uvicorn[standard]==0.30.1 \
+    "uvicorn[standard]==0.30.1" \
     boto3==1.34.162 \
     python-frontmatter==1.0.0 \
     PyYAML==6.0.1 \

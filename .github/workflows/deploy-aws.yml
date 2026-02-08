@@ -1,0 +1,159 @@
+# Required repository variables:
+# - AWS_REGION
+# - S3_BUCKET_NAME
+# - ECR_API_REPOSITORY
+# - ECR_WEB_REPOSITORY
+#
+# Required repository secrets (choose one auth method):
+# - AWS_ROLE_TO_ASSUME (recommended, OIDC)
+# OR
+# - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY (fallback)
+# - AWS_SESSION_TOKEN (optional, for temporary credentials)
+
+name: Deploy to AWS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-aws-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  S3_BUCKET_NAME: ${{ vars.S3_BUCKET_NAME }}
+  ECR_API_REPOSITORY: ${{ vars.ECR_API_REPOSITORY }}
+  ECR_WEB_REPOSITORY: ${{ vars.ECR_WEB_REPOSITORY }}
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        if: ${{ secrets.AWS_ROLE_TO_ASSUME != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS credentials (access keys fallback)
+        if: ${{ secrets.AWS_ROLE_TO_ASSUME == '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: latest
+
+      - name: OpenTofu init
+        working-directory: opentofu
+        run: tofu init
+
+      - name: OpenTofu apply
+        working-directory: opentofu
+        run: tofu apply -auto-approve -var="bucket_name=${S3_BUCKET_NAME}"
+
+      - name: Get EC2 instance ID from OpenTofu output
+        id: infra
+        working-directory: opentofu
+        run: |
+          echo "instance_id=$(tofu output -raw ec2_instance_id)" >> "$GITHUB_OUTPUT"
+
+      - name: Sync posts to S3
+        run: aws s3 sync content/posts/ s3://${S3_BUCKET_NAME}/posts/ --delete
+
+      - name: Ensure ECR repositories exist
+        run: |
+          aws ecr describe-repositories \
+            --repository-names "${ECR_API_REPOSITORY}" \
+            >/dev/null 2>&1 || aws ecr create-repository \
+            --repository-name "${ECR_API_REPOSITORY}"
+
+          aws ecr describe-repositories \
+            --repository-names "${ECR_WEB_REPOSITORY}" \
+            >/dev/null 2>&1 || aws ecr create-repository \
+            --repository-name "${ECR_WEB_REPOSITORY}"
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push backend image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            -t ${ECR_REGISTRY}/${ECR_API_REPOSITORY}:${IMAGE_TAG} \
+            -t ${ECR_REGISTRY}/${ECR_API_REPOSITORY}:latest \
+            src/backend
+          docker push ${ECR_REGISTRY}/${ECR_API_REPOSITORY}:${IMAGE_TAG}
+          docker push ${ECR_REGISTRY}/${ECR_API_REPOSITORY}:latest
+
+      - name: Build and push frontend image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --build-arg VITE_API_URL=/api \
+            -t ${ECR_REGISTRY}/${ECR_WEB_REPOSITORY}:${IMAGE_TAG} \
+            -t ${ECR_REGISTRY}/${ECR_WEB_REPOSITORY}:latest \
+            src/frontend
+          docker push ${ECR_REGISTRY}/${ECR_WEB_REPOSITORY}:${IMAGE_TAG}
+          docker push ${ECR_REGISTRY}/${ECR_WEB_REPOSITORY}:latest
+
+      - name: Deploy on EC2 via SSM
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          INSTANCE_ID: ${{ steps.infra.outputs.instance_id }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          API_IMAGE="${ECR_REGISTRY}/${ECR_API_REPOSITORY}:${IMAGE_TAG}"
+          WEB_IMAGE="${ECR_REGISTRY}/${ECR_WEB_REPOSITORY}:${IMAGE_TAG}"
+
+          cat > ssm-commands.json <<EOF
+          {
+            "commands": [
+              "set -euo pipefail",
+              "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}",
+              "cd /opt/dev-blog",
+              "echo API_IMAGE='${API_IMAGE}' > .env",
+              "echo WEB_IMAGE='${WEB_IMAGE}' >> .env",
+              "echo AWS_REGION='${AWS_REGION}' >> .env",
+              "echo S3_BUCKET_NAME='${S3_BUCKET_NAME}' >> .env",
+              "docker compose pull",
+              "docker compose up -d"
+            ]
+          }
+          EOF
+
+          aws ssm send-command \
+            --instance-ids "${INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy dev-blog ${GITHUB_SHA}" \
+            --parameters file://ssm-commands.json \
+            --query "Command.CommandId" \
+            --output text > command_id.txt
+
+          COMMAND_ID=$(cat command_id.txt)
+          aws ssm wait command-executed \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${INSTANCE_ID}"

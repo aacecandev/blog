@@ -30,6 +30,7 @@ This directory will be removed in a future release once we confirm no dependenci
 ## Migration Notes
 
 If you were using the old endpoints:
+
 - `GET /` (HTML) → Use React frontend at `app/frontend/`
 - `GET /post/{slug}` (HTML) → `GET /post/{slug}` (JSON) from `app/backend/`
 - `GET /tag/{tag}` (HTML) → Filter by tag in React frontend

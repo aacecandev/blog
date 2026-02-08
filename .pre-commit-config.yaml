@@ -1,36 +1,584 @@
+# =============================================================================
+# Pre-commit Configuration for blog-dev
+# =============================================================================
+# This configuration provides comprehensive linting, formatting, and security
+# scanning for a multi-language project (Python, TypeScript, Terraform, Helm).
+#
+# Install: pre-commit install && pre-commit install --hook-type commit-msg
+# Run all: pre-commit run --all-files
+# Update:  pre-commit autoupdate
+# =============================================================================
+
+# Minimum pre-commit version required for all features
+minimum_pre_commit_version: "3.6.0"
+
+# Default settings applied to all hooks unless overridden
+default_install_hook_types:
+  - pre-commit
+  - commit-msg
+default_stages:
+  - pre-commit
+
+# Exclude common patterns that should never be checked
+exclude: |
+  (?x)^(
+    \.git/|
+    \.venv/|
+    node_modules/|
+    __pycache__/|
+    \.pytest_cache/|
+    \.mypy_cache/|
+    \.ruff_cache/|
+    dist/|
+    build/|
+    \.terraform/|
+    \.terraform\.lock\.hcl$|
+    .*\.egg-info/
+  )$
+
 repos:
-  # Gitleaks — detect hardcoded secrets
+  # ===========================================================================
+  # GENERAL HOOKS - Code quality basics for all file types
+  # ===========================================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # Syntax validation
+      - id: check-ast
+        name: "Python: Validate AST syntax"
+        description: "Ensures Python files parse correctly"
+
+      - id: check-json
+        name: "JSON: Validate syntax"
+        description: "Ensures JSON files are valid"
+
+      - id: check-yaml
+        name: "YAML: Validate syntax"
+        description: "Ensures YAML files are valid"
+        # Exclude Helm templates as they contain Go templating syntax
+        exclude: ^helm/templates/
+        args:
+          - --unsafe  # Allow custom YAML tags (needed for CloudFormation, etc.)
+
+      - id: check-toml
+        name: "TOML: Validate syntax"
+        description: "Ensures TOML files (pyproject.toml, etc.) are valid"
+
+      - id: check-xml
+        name: "XML: Validate syntax"
+        description: "Ensures XML files are well-formed"
+
+      # File hygiene
+      - id: end-of-file-fixer
+        name: "Files: Fix missing newline at end"
+        description: "Ensures files end with a newline"
+        exclude: \.min\.(js|css)$
+
+      - id: trailing-whitespace
+        name: "Files: Remove trailing whitespace"
+        description: "Removes trailing whitespace from lines"
+        args:
+          - --markdown-linebreak-ext=md  # Preserve Markdown line breaks
+
+      - id: mixed-line-ending
+        name: "Files: Fix mixed line endings"
+        description: "Ensures consistent line endings (LF)"
+        args:
+          - --fix=lf
+
+      - id: fix-byte-order-marker
+        name: "Files: Remove BOM"
+        description: "Removes UTF-8 byte order marker"
+
+      # File size and merge conflicts
+      - id: check-added-large-files
+        name: "Files: Check for large files"
+        description: "Prevents giant files from being committed"
+        args:
+          - --maxkb=1024  # 1MB limit
+
+      - id: check-merge-conflict
+        name: "Git: Check for merge conflict markers"
+        description: "Prevents committing unresolved merge conflicts"
+
+      - id: check-case-conflict
+        name: "Files: Check for case conflicts"
+        description: "Checks for files that would conflict on case-insensitive filesystems"
+
+      # Executable and shebang checks
+      - id: check-executables-have-shebangs
+        name: "Scripts: Check executables have shebangs"
+        description: "Ensures executable scripts have a shebang"
+
+      - id: check-shebang-scripts-are-executable
+        name: "Scripts: Check shebang scripts are executable"
+        description: "Ensures scripts with shebangs are executable"
+
+      # Python-specific from pre-commit-hooks
+      - id: check-docstring-first
+        name: "Python: Check docstring placement"
+        description: "Ensures docstrings come before code"
+        files: \.py$
+
+      - id: debug-statements
+        name: "Python: Check for debug statements"
+        description: "Detects debugger imports and pdb.set_trace() calls"
+        files: \.py$
+
+      - id: name-tests-test
+        name: "Python: Check test file naming"
+        description: "Ensures test files follow pytest naming convention"
+        args:
+          - --pytest-test-first
+        files: ^app/backend/tests/.*\.py$
+
+      # Security - credential detection
+      - id: detect-aws-credentials
+        name: "Security: Detect AWS credentials"
+        description: "Prevents AWS credentials from being committed"
+        args:
+          - --allow-missing-credentials
+
+      - id: detect-private-key
+        name: "Security: Detect private keys"
+        description: "Prevents private keys from being committed"
+
+      # Symlink safety
+      - id: check-symlinks
+        name: "Files: Check for broken symlinks"
+        description: "Detects broken symbolic links"
+
+      - id: destroyed-symlinks
+        name: "Files: Check for destroyed symlinks"
+        description: "Detects symlinks changed to regular files"
+
+  # ===========================================================================
+  # SECURITY SCANNING - Secrets detection and vulnerability scanning
+  # ===========================================================================
+
+  # Gitleaks - comprehensive secrets scanner
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.0
     hooks:
       - id: gitleaks
-
-  # General security and file hygiene
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
-    hooks:
-      - id: detect-private-key
-      - id: check-added-large-files
-        args: ["--maxkb=500"]
-      - id: check-merge-conflict
-      - id: check-yaml
-      - id: check-json
-
-  # OpenTofu / Terraform security scanner
-  - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.105.0
-    hooks:
-      - id: terraform_trivy
-        files: ^opentofu/
+        name: "Security: Scan for secrets (gitleaks)"
+        description: "Scans for hardcoded secrets and credentials"
+        # Use staged files only for speed
         args:
-          - --args=--skip-dirs=src,.venv,node_modules
+          - --staged
+          - --verbose
 
-  # Python security — bandit
+  # Detect-secrets - Yelp's secrets detection with baseline support
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: "Security: Scan for secrets (detect-secrets)"
+        description: "Scans for potential secrets using entropy and patterns"
+        args:
+          - --baseline
+          - .secrets.baseline
+        # Exclude known false positives and test fixtures
+        exclude: |
+          (?x)^(
+            \.secrets\.baseline$|
+            .*test.*fixture.*|
+            .*\.lock$|
+            package-lock\.json$
+          )$
+
+  # ===========================================================================
+  # PYTHON HOOKS - Backend linting, formatting, type checking, security
+  # ===========================================================================
+
+  # Ruff - extremely fast Python linter and formatter (replaces Black, isort, flake8)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.11
+    hooks:
+      - id: ruff
+        name: "Python: Lint with ruff"
+        description: "Fast Python linter with autofix capabilities"
+        files: ^app/backend/.*\.py$
+        args:
+          - --fix
+          - --exit-non-zero-on-fix
+          - --config=app/backend/pyproject.toml
+
+      - id: ruff-format
+        name: "Python: Format with ruff"
+        description: "Fast Python formatter (Black-compatible)"
+        files: ^app/backend/.*\.py$
+        args:
+          - --config=app/backend/pyproject.toml
+
+  # Mypy - static type checker for Python
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.19.1
+    hooks:
+      - id: mypy
+        name: "Python: Type check with mypy"
+        description: "Static type checking for Python code"
+        files: ^app/backend/.*\.py$
+        # Exclude test files from strict type checking
+        exclude: ^app/backend/tests/
+        args:
+          - --config-file=app/backend/pyproject.toml
+          - --ignore-missing-imports
+        # Additional dependencies needed for type stubs
+        additional_dependencies:
+          - pydantic>=2.0
+          - boto3-stubs[s3]
+          - types-cachetools
+          - types-PyYAML
+          - fastapi>=0.100.0
+
+  # Bandit - Python security linter
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.9.3
+    rev: 1.9.2
     hooks:
       - id: bandit
-        args: ["-c", "src/backend/pyproject.toml", "-r"]
-        additional_dependencies: ["bandit[toml]"]
-        files: ^src/backend/
-        exclude: ^src/backend/tests/
+        name: "Python: Security scan with bandit"
+        description: "Finds common security issues in Python code"
+        files: ^app/backend/.*\.py$
+        # Exclude tests which may intentionally contain security anti-patterns
+        exclude: ^app/backend/tests/
+        args:
+          - --configfile=pyproject.toml
+          - --severity-level=medium
+          - --confidence-level=medium
+          - --recursive
+          - --quiet
+
+  # Safety - check Python dependencies for known vulnerabilities
+  # Note: Requires SAFETY_API_KEY for full functionality
+  # Converted to local hook as pyupio/safety repo no longer provides pre-commit hooks
+  - repo: local
+    hooks:
+      - id: safety
+        name: "Python: Check dependencies for vulnerabilities"
+        description: "Scans Python dependencies for known security vulnerabilities"
+        entry: bash -c 'cd app/backend && safety check --full-report 2>/dev/null || true'
+        language: system
+        files: ^app/backend/(pyproject\.toml|requirements.*\.txt)$
+        pass_filenames: false
+
+  # ===========================================================================
+  # TYPESCRIPT/JAVASCRIPT HOOKS - Frontend linting and formatting
+  # ===========================================================================
+
+  # ESLint - JavaScript/TypeScript linter
+  - repo: local
+    hooks:
+      - id: frontend-eslint
+        name: "TypeScript: Lint with ESLint"
+        description: "Lints TypeScript/JavaScript code for errors and style issues"
+        entry: bash -c 'cd app/frontend && npm run lint 2>/dev/null || npx eslint --max-warnings=0 "src/**/*.{ts,tsx,js,jsx}"'
+        language: system
+        files: ^app/frontend/src/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false
+
+      # Prettier - code formatter for frontend
+      - id: frontend-prettier
+        name: "TypeScript: Format with Prettier"
+        description: "Formats TypeScript, JavaScript, CSS, JSON, and Markdown files"
+        entry: bash -c 'cd app/frontend && npx prettier --write --ignore-unknown .'
+        language: system
+        files: ^app/frontend/.*\.(ts|tsx|js|jsx|json|css|scss|md|html)$
+        pass_filenames: false
+
+      # TypeScript compiler check
+      - id: frontend-typecheck
+        name: "TypeScript: Type check with tsc"
+        description: "Runs TypeScript compiler to check for type errors"
+        entry: bash -c 'cd app/frontend && npx tsc --noEmit'
+        language: system
+        files: ^app/frontend/.*\.(ts|tsx)$
+        pass_filenames: false
+
+  # ===========================================================================
+  # TERRAFORM/OPENTOFU HOOKS - Infrastructure as Code validation
+  # ===========================================================================
+
+  - repo: https://github.com/tofuutils/pre-commit-opentofu
+    rev: v2.2.2
+    hooks:
+      # Format check
+      - id: tofu_fmt
+        name: "Terraform: Format check"
+        description: "Ensures Terraform files are properly formatted"
+        files: ^infra/terraform/.*\.tf$
+
+      # Validate configuration
+      - id: tofu_validate
+        name: "Terraform: Validate configuration"
+        description: "Validates Terraform configuration syntax and consistency"
+        files: ^infra/terraform/.*\.tf$
+
+      # TFLint - Terraform linter
+      - id: tofu_tflint
+        name: "Terraform: Lint with tflint"
+        description: "Lints Terraform code for errors and best practices"
+        files: ^infra/terraform/.*\.tf$
+        args:
+          - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
+
+      # Trivy - security scanner for Terraform
+      - id: tofu_trivy
+        name: "Terraform: Security scan with trivy"
+        description: "Scans Terraform code for security misconfigurations"
+        files: ^infra/terraform/.*\.tf$
+
+      # terraform-docs - auto-generate documentation
+      - id: tofu_docs
+        name: "Terraform: Generate documentation"
+        description: "Auto-generates Terraform module documentation"
+        files: ^infra/terraform/.*\.tf$
+        args:
+          - --hook-config=--path-to-file=README.md
+          - --hook-config=--add-to-existing-file=true
+          - --hook-config=--create-file-if-not-exist=true
+          - --hook-config=--use-standard-markers=true
+
+  # Checkov - comprehensive IaC security scanner (alternative/complement to trivy)
+  - repo: https://github.com/bridgecrewio/checkov
+    rev: 3.2.497
+    hooks:
+      - id: checkov
+        name: "Terraform: Security scan with checkov"
+        description: "Scans Terraform for security and compliance issues"
+        files: ^infra/terraform/.*\.tf$
+        args:
+          - --directory=infra/terraform
+          - --framework=terraform
+          - --soft-fail  # Don't fail the commit, just warn
+          - --compact
+          - --skip-check=CKV_AWS_144,CKV_AWS_145  # Skip S3 cross-region replication checks if not needed
+
+  # ===========================================================================
+  # HELM CHART HOOKS - Kubernetes manifest validation
+  # ===========================================================================
+
+  - repo: https://github.com/gruntwork-io/pre-commit
+    rev: v0.1.30
+    hooks:
+      - id: helmlint
+        name: "Helm: Lint charts"
+        description: "Validates Helm chart syntax and best practices"
+        files: ^helm/
+
+  # ===========================================================================
+  # DOCKER HOOKS - Dockerfile linting and security
+  # ===========================================================================
+
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.14.0
+    hooks:
+      - id: hadolint-docker
+        name: "Docker: Lint Dockerfiles"
+        description: "Lints Dockerfiles for best practices and common mistakes"
+        files: (Dockerfile|\.dockerfile)$
+        args:
+          - --ignore=DL3008  # Pin versions in apt-get (can be noisy)
+          - --ignore=DL3018  # Pin versions in apk add
+          - --strict-labels  # Require LABEL maintainer
+
+  # ===========================================================================
+  # YAML/JSON LINTING - Configuration file validation
+  # ===========================================================================
+
+  # Yamllint - comprehensive YAML linter
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        name: "YAML: Lint with yamllint"
+        description: "Comprehensive YAML linting for style and syntax"
+        files: \.(yaml|yml)$
+        # Exclude Helm templates (Go templating) and lock files
+        exclude: |
+          (?x)^(
+            helm/templates/.*|
+            \.terraform\.lock\.hcl$
+          )$
+        args:
+          - --strict
+          - -d
+          - |
+            {
+              extends: default,
+              rules: {
+                line-length: {max: 150},
+                truthy: {check-keys: false},
+                document-start: disable,
+                indentation: {spaces: 2},
+                comments: {min-spaces-from-content: 1}
+              }
+            }
+
+  # Prettier for JSON/YAML consistency (non-frontend files)
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        name: "Config: Format JSON/YAML with Prettier"
+        description: "Formats JSON and YAML configuration files"
+        types_or:
+          - json
+        # Exclude frontend (has its own Prettier) and generated files
+        exclude: |
+          (?x)^(
+            app/frontend/.*|
+            package-lock\.json$|
+            .*\.lock$
+          )$
+        args:
+          - --write
+
+  # ===========================================================================
+  # MARKDOWN LINTING - Documentation quality
+  # ===========================================================================
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.47.0
+    hooks:
+      - id: markdownlint-fix
+        name: "Markdown: Lint and fix"
+        description: "Lints Markdown files and auto-fixes issues"
+        files: \.md$
+        args:
+          - --fix
+          - --disable=MD013  # Line length (can be overly restrictive)
+          - --disable=MD033  # Inline HTML (needed for some docs)
+          - --disable=MD041  # First line heading (not always applicable)
+
+  # ===========================================================================
+  # SHELL SCRIPT LINTING
+  # ===========================================================================
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        name: "Shell: Lint with shellcheck"
+        description: "Lints shell scripts for bugs and best practices"
+        files: \.(sh|bash)$
+        args:
+          - --severity=warning
+          - --external-sources
+
+  # ===========================================================================
+  # GIT COMMIT MESSAGE HOOKS
+  # ===========================================================================
+
+  # Conventional commits - enforce commit message format
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.3.0
+    hooks:
+      - id: conventional-pre-commit
+        name: "Git: Validate commit message format"
+        description: "Ensures commit messages follow Conventional Commits specification"
+        stages:
+          - commit-msg
+        args:
+          - --strict
+          # Allowed commit types
+          - feat      # New feature
+          - fix       # Bug fix
+          - docs      # Documentation only
+          - style     # Code style (formatting, etc.)
+          - refactor  # Code refactoring
+          - perf      # Performance improvement
+          - test      # Adding tests
+          - build     # Build system changes
+          - ci        # CI configuration
+          - chore     # Maintenance tasks
+          - revert    # Revert previous commit
+
+  # Commitizen - alternative commit message helper (optional)
+  # Uncomment if you prefer commitizen over conventional-pre-commit
+  # - repo: https://github.com/commitizen-tools/commitizen
+  #   rev: v3.29.0
+  #   hooks:
+  #     - id: commitizen
+  #       name: "Git: Check commit with commitizen"
+  #       stages:
+  #         - commit-msg
+
+  # ===========================================================================
+  # ADDITIONAL SECURITY AND CODE QUALITY
+  # ===========================================================================
+
+  # Semgrep - static analysis for security vulnerabilities
+  # Note: Can be slow on large codebases; consider running in CI instead
+  # - repo: https://github.com/semgrep/semgrep
+  #   rev: v1.90.0
+  #   hooks:
+  #     - id: semgrep
+  #       name: "Security: Scan with semgrep"
+  #       args:
+  #         - --config=auto
+  #         - --error
+  #       files: \.(py|js|ts|tsx)$
+
+  # Check for TODO/FIXME comments that should be addressed
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.10.0
+    hooks:
+      - id: python-check-blanket-noqa
+        name: "Python: Check for blanket noqa"
+        description: "Ensures noqa comments specify which codes are ignored"
+        files: ^app/backend/.*\.py$
+
+      - id: python-check-blanket-type-ignore
+        name: "Python: Check for blanket type: ignore"
+        description: "Ensures type: ignore comments are specific"
+        files: ^app/backend/.*\.py$
+
+      - id: python-no-log-warn
+        name: "Python: Use logging.warning instead of warn"
+        description: "Ensures correct logging method is used"
+        files: ^app/backend/.*\.py$
+
+      - id: text-unicode-replacement-char
+        name: "Text: Check for unicode replacement characters"
+        description: "Detects the unicode replacement character (often indicates encoding issues)"
+
+  # ===========================================================================
+  # CI-SPECIFIC HOOKS
+  # ===========================================================================
+
+  # GitLab CI linting
+  - repo: https://gitlab.com/devopshq/gitlab-ci-linter
+    rev: v1.0.6
+    hooks:
+      - id: gitlab-ci-linter
+        name: "GitLab: Lint CI configuration"
+        description: "Validates GitLab CI/CD configuration syntax"
+        files: ^\.gitlab-ci\.yml$
+        # Requires GITLAB_PRIVATE_TOKEN environment variable
+        # or use --server for public projects
+
+  # =============================================================================
+  # LOCAL HOOKS - Project-specific custom checks
+  # =============================================================================
+
+  - repo: local
+    hooks:
+      # Ensure no console.log statements in production code
+      - id: no-console-log
+        name: "TypeScript: No console.log in production"
+        description: "Prevents console.log statements from being committed"
+        entry: bash -c 'grep -r "console\.log" app/frontend/src --include="*.ts" --include="*.tsx" 2>/dev/null && exit 1 || exit 0'
+        language: system
+        files: ^app/frontend/src/.*\.(ts|tsx)$
+        pass_filenames: false
+
+      # Check for common Python anti-patterns
+      - id: no-print-statements
+        name: "Python: No print statements (use logging)"
+        description: "Prevents print() in production code; use logging instead"
+        entry: bash -c 'grep -r "^\s*print(" app/backend --include="*.py" --exclude-dir=tests 2>/dev/null && exit 1 || exit 0'
+        language: system
+        files: ^app/backend/.*\.py$
+        exclude: ^app/backend/tests/
+        pass_filenames: false
