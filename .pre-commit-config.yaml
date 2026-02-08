@@ -1,0 +1,34 @@
+repos:
+  # Gitleaks — detect hardcoded secrets
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
+
+  # General security and file hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-json
+
+  # OpenTofu / Terraform security scanner
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.105.0
+    hooks:
+      - id: terraform_trivy
+        files: \.tf$
+
+  # Python security — bandit
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.9.3
+    hooks:
+      - id: bandit
+        args: ["-c", "src/backend/pyproject.toml", "-r"]
+        additional_dependencies: ["bandit[toml]"]
+        files: ^src/backend/
+        exclude: ^src/backend/tests/
