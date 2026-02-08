@@ -1,0 +1,72 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   HERO - NEOBRUTALISM STYLE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.hero {
+  background: linear-gradient(135deg, var(--bg-surface) 0%, rgba(203, 166, 247, 0.15) 100%);
+  border: var(--border-width) solid var(--accent-mauve);
+  box-shadow: var(--shadow);
+  margin-bottom: 2rem;
+}
+
+.hero-content {
+  padding: 3rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.hero-text {
+  flex: 1;
+}
+
+.hero-text h1 {
+  font-size: 2.25rem;
+  line-height: 1.2;
+  margin: 0 0 1rem;
+  color: var(--fg-bright);
+}
+
+.hero-text h1 .highlight {
+  background: var(--accent-mauve);
+  color: var(--bg);
+  padding: 0 0.35rem;
+  border: 2px solid var(--border-light);
+}
+
+.hero-text p {
+  font-size: 1.1rem;
+  margin: 0;
+  color: var(--fg);
+  opacity: 0.9;
+}
+
+.hero-avatar {
+  width: 140px;
+  height: 140px;
+  border: var(--border-width) solid var(--accent-cyan);
+  box-shadow: var(--shadow);
+  object-fit: cover;
+  background: var(--bg-surface);
+  flex-shrink: 0;
+}
+
+/* Mobile responsive */
+@media (max-width: 720px) {
+  .hero-content {
+    flex-direction: column;
+    text-align: center;
+    padding: 2rem 1.5rem;
+  }
+
+  .hero-text h1 {
+    font-size: 1.75rem;
+  }
+
+  .hero-avatar {
+    width: 120px;
+    height: 120px;
+    order: -1;
+  }
+}
