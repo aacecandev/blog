@@ -132,6 +132,19 @@ jobs:
             fi
           fi
 
+          ZONE_ID=$(aws route53 list-hosted-zones-by-name \
+            --dns-name "aacecan.com" \
+            --query 'HostedZones[0].Id' \
+            --output text | sed 's|/hostedzone/||')
+
+          if [ -n "${ZONE_ID}" ] && [ "${ZONE_ID}" != "None" ]; then
+            tofu state show aws_route53_record.dev >/dev/null 2>&1 || \
+              tofu import aws_route53_record.dev "${ZONE_ID}_dev.aacecan.com_A"
+
+            tofu state show aws_route53_record.www_dev >/dev/null 2>&1 || \
+              tofu import aws_route53_record.www_dev "${ZONE_ID}_www.dev.aacecan.com_A"
+          fi
+
       - name: OpenTofu apply
         working-directory: opentofu
         run: tofu apply -auto-approve -var="bucket_name=${S3_BUCKET_NAME}"
