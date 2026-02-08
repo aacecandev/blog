@@ -47,23 +47,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Detect changed paths
         id: changes
         run: |
+          set -euo pipefail
+
           BASE="${{ github.event.before }}"
-          if [ -z "${BASE}" ] || [ "${BASE}" = "0000000000000000000000000000000000000000" ]; then
-            echo "First push or manual trigger — building everything"
+          if [ -z "${BASE}" ] || [ "${BASE}" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "First push, manual trigger, or base commit unavailable — building everything"
             echo "api=true"  >> "$GITHUB_OUTPUT"
             echo "web=true"  >> "$GITHUB_OUTPUT"
           else
-            if git diff --name-only "${BASE}" HEAD | grep -q '^src/backend/'; then
+            CHANGED=$(git diff --name-only "${BASE}" HEAD)
+            echo "Changed files:"
+            echo "${CHANGED}"
+
+            if echo "${CHANGED}" | grep -q '^src/backend/'; then
               echo "api=true"  >> "$GITHUB_OUTPUT"
             else
               echo "api=false" >> "$GITHUB_OUTPUT"
             fi
-            if git diff --name-only "${BASE}" HEAD | grep -q '^src/frontend/'; then
+            if echo "${CHANGED}" | grep -q '^src/frontend/'; then
               echo "web=true"  >> "$GITHUB_OUTPUT"
             else
               echo "web=false" >> "$GITHUB_OUTPUT"
