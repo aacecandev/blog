@@ -196,6 +196,9 @@ resource "aws_instance" "blog_web" {
     ENVFILE
 
     chown ec2-user:ec2-user /opt/dev-blog/.env
+
+    ECR_REGISTRY=$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${var.aws_region}.amazonaws.com
+    aws ecr get-login-password --region ${var.aws_region} | docker login --username AWS --password-stdin "$ECR_REGISTRY"
     cd /opt/dev-blog && docker compose up -d
   EOT
 
