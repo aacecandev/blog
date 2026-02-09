@@ -73,7 +73,7 @@ data "aws_iam_policy_document" "blog_s3_read" {
 
 locals {
   selected_subnet_id = var.subnet_id != "" ? var.subnet_id : sort(data.aws_subnets.default.ids)[0]
-  caddy_email        = var.letsencrypt_email != "" ? var.letsencrypt_email : "admin@${var.route53_zone_name}"
+  caddy_email        = var.letsencrypt_email != "" ? var.letsencrypt_email : "dev@${var.route53_zone_name}"
 }
 
 resource "aws_iam_role" "blog_ec2" {
