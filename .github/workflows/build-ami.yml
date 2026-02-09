@@ -1,0 +1,100 @@
+# Builds a Packer AMI for the dev-blog EC2 instance.
+# Trigger: manual dispatch or changes to packer/ directory.
+#
+# Required repository secrets (choose one auth method):
+# - AWS_ROLE_TO_ASSUME (recommended, OIDC)
+# OR
+# - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY (fallback)
+# - AWS_SESSION_TOKEN (optional, for temporary credentials)
+
+name: Build AMI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "packer/**"
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: "AWS region to build the AMI in"
+        required: false
+        default: "eu-west-1"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: build-ami
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ inputs.aws_region || vars.AWS_REGION || 'eu-west-1' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+    outputs:
+      ami_id: ${{ steps.build.outputs.ami_id }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        if: env.AWS_ROLE_TO_ASSUME != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS credentials (access keys fallback)
+        if: env.AWS_ROLE_TO_ASSUME == ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Packer
+        uses: hashicorp/setup-packer@main
+        with:
+          version: latest
+
+      - name: Packer init
+        working-directory: packer
+        run: packer init .
+
+      - name: Packer validate
+        working-directory: packer
+        run: packer validate -var="aws_region=${AWS_REGION}" .
+
+      - name: Packer build
+        id: build
+        working-directory: packer
+        run: |
+          set -euo pipefail
+
+          packer build \
+            -var="aws_region=${AWS_REGION}" \
+            -color=false \
+            . | tee packer-output.log
+
+          AMI_ID=$(grep -oP 'ami-[0-9a-f]+' packer-output.log | tail -1)
+
+          if [ -z "${AMI_ID}" ]; then
+            echo "::error::Failed to extract AMI ID from Packer output"
+            exit 1
+          fi
+
+          echo "ami_id=${AMI_ID}" >> "$GITHUB_OUTPUT"
+          echo "## AMI Built Successfully" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **AMI ID**: \`${AMI_ID}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Region**: \`${AWS_REGION}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Commit**: \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
