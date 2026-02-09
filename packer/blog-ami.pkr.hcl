@@ -91,10 +91,10 @@ build {
   provisioner "file" {
     content     = <<-CADDY
       {
-        email {$$CADDY_EMAIL}
+        email {$CADDY_EMAIL}
       }
 
-      {$$DOMAIN}, {$$WWW_DOMAIN} {
+      {$DOMAIN}, {$WWW_DOMAIN} {
         encode gzip
 
         @api path /api/*
