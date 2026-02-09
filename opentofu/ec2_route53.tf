@@ -184,8 +184,8 @@ resource "aws_instance" "blog_web" {
     set -euxo pipefail
 
     cat > /opt/dev-blog/.env <<ENVFILE
-    API_IMAGE=public.ecr.aws/docker/library/busybox:latest
-    WEB_IMAGE=public.ecr.aws/docker/library/busybox:latest
+    API_IMAGE=733077684693.dkr.ecr.eu-west-1.amazonaws.com/dev-blog-api:latest
+    WEB_IMAGE=733077684693.dkr.ecr.eu-west-1.amazonaws.com/dev-blog-web:latest
     AWS_REGION=${var.aws_region}
     S3_BUCKET_NAME=${var.bucket_name}
     CONTENT_PREFIX=${var.content_prefix}

@@ -184,8 +184,8 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           INSTANCE_ID: ${{ steps.infra.outputs.instance_id }}
-          API_IMAGE: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_API_REPOSITORY }}:latest
-          WEB_IMAGE: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WEB_REPOSITORY }}:latest
+          API_IMAGE: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_API_REPOSITORY }}:${{ github.sha }}
+          WEB_IMAGE: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WEB_REPOSITORY }}:${{ github.sha }}
         run: |
           set -euo pipefail
 
@@ -196,10 +196,8 @@ jobs:
               "cloud-init status --wait || true",
               "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}",
               "cd /opt/dev-blog",
-              "echo API_IMAGE='${API_IMAGE}' > .env",
-              "echo WEB_IMAGE='${WEB_IMAGE}' >> .env",
-              "echo AWS_REGION='${AWS_REGION}' >> .env",
-              "echo S3_BUCKET_NAME='${S3_BUCKET_NAME}' >> .env",
+              "sed -i 's|^API_IMAGE=.*|API_IMAGE=${API_IMAGE}|' .env",
+              "sed -i 's|^WEB_IMAGE=.*|WEB_IMAGE=${WEB_IMAGE}|' .env",
               "docker compose pull",
               "docker compose up -d"
             ]
