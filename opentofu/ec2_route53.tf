@@ -9,18 +9,23 @@ data "aws_subnets" "default" {
   }
 }
 
-data "aws_ami" "amazon_linux_2023" {
+data "aws_ami" "blog" {
   most_recent = true
-  owners      = ["amazon"]
+  owners      = ["self"]
 
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    values = ["dev-blog-*"]
   }
 
   filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
+    name   = "tag:Project"
+    values = ["dev-blog"]
+  }
+
+  filter {
+    name   = "tag:ManagedBy"
+    values = ["packer"]
   }
 }
 
@@ -149,12 +154,21 @@ resource "aws_security_group" "blog_web" {
 }
 
 resource "aws_instance" "blog_web" {
-  ami                    = data.aws_ami.amazon_linux_2023.id
+  ami                    = data.aws_ami.blog.id
   instance_type          = var.instance_type
   subnet_id              = local.selected_subnet_id
   vpc_security_group_ids = [aws_security_group.blog_web.id]
   iam_instance_profile   = aws_iam_instance_profile.blog_ec2.name
   key_name               = var.key_name != "" ? var.key_name : null
+
+  instance_market_options {
+    market_type = "spot"
+
+    spot_options {
+      spot_instance_type             = "persistent"
+      instance_interruption_behavior = "stop"
+    }
+  }
 
   metadata_options {
     http_endpoint = "enabled"
@@ -169,89 +183,20 @@ resource "aws_instance" "blog_web" {
     #!/bin/bash
     set -euxo pipefail
 
-    dnf update -y
-    dnf install -y docker amazon-ssm-agent
-    # docker-compose-plugin is not available in AL2023 repos;
-    # install the compose CLI plugin from Docker's GitHub releases
-    mkdir -p /usr/libexec/docker/cli-plugins
-    curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
-      -o /usr/libexec/docker/cli-plugins/docker-compose
-    chmod +x /usr/libexec/docker/cli-plugins/docker-compose
-    systemctl enable --now docker
-    systemctl enable --now amazon-ssm-agent
-    usermod -aG docker ec2-user
-
-    mkdir -p /opt/dev-blog
-
-    cat > /opt/dev-blog/Caddyfile <<'CADDY'
-    {
-      email ${local.caddy_email}
-    }
-
-    ${var.dev_domain_name}, ${var.www_domain_name} {
-      encode gzip
-
-      @api path /api/*
-      handle @api {
-        uri strip_prefix /api
-        reverse_proxy api:8000
-      }
-
-      handle {
-        reverse_proxy web:80
-      }
-    }
-    CADDY
-
-    cat > /opt/dev-blog/docker-compose.yml <<'COMPOSE'
-    services:
-      api:
-        image: $${API_IMAGE}
-        restart: unless-stopped
-        environment:
-          DEV_BLOG_ENVIRONMENT: prod
-          DEV_BLOG_AWS_REGION: $${AWS_REGION}
-          DEV_BLOG_S3_BUCKET: $${S3_BUCKET_NAME}
-          DEV_BLOG_S3_PREFIX: ${var.content_prefix}
-          DEV_BLOG_CONTENT_DIR: ""
-          DEV_BLOG_CACHE_TTL_SECONDS: "300"
-          DEV_BLOG_CORS_ORIGINS: '["https://${var.dev_domain_name}","https://${var.www_domain_name}"]'
-        expose:
-          - "8000"
-
-      web:
-        image: $${WEB_IMAGE}
-        restart: unless-stopped
-        depends_on:
-          - api
-
-      caddy:
-        image: caddy:2
-        restart: unless-stopped
-        depends_on:
-          - api
-          - web
-        ports:
-          - "80:80"
-          - "443:443"
-        volumes:
-          - /opt/dev-blog/Caddyfile:/etc/caddy/Caddyfile:ro
-          - caddy_data:/data
-          - caddy_config:/config
-
-    volumes:
-      caddy_data:
-      caddy_config:
-    COMPOSE
-
-    cat > /opt/dev-blog/.env <<'ENVFILE'
+    cat > /opt/dev-blog/.env <<ENVFILE
     API_IMAGE=public.ecr.aws/docker/library/busybox:latest
     WEB_IMAGE=public.ecr.aws/docker/library/busybox:latest
     AWS_REGION=${var.aws_region}
     S3_BUCKET_NAME=${var.bucket_name}
+    CONTENT_PREFIX=${var.content_prefix}
+    DOMAIN=${var.dev_domain_name}
+    WWW_DOMAIN=${var.www_domain_name}
+    CADDY_EMAIL=${local.caddy_email}
+    CORS_ORIGINS='["https://${var.dev_domain_name}","https://${var.www_domain_name}"]'
     ENVFILE
 
-    chown -R ec2-user:ec2-user /opt/dev-blog
+    chown ec2-user:ec2-user /opt/dev-blog/.env
+    cd /opt/dev-blog && docker compose up -d
   EOT
 
   tags = {
