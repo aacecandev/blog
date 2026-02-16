@@ -1,0 +1,102 @@
+# Builds and pushes backend + frontend Docker images to ECR.
+# Trigger: merge to main with commit message matching "feat(images): ..."
+#          or manual dispatch.
+#
+# Required repository variables:
+# - AWS_REGION
+# - ECR_BACKEND_REPOSITORY  (must match opentofu var.ecr_backend_repository)
+# - ECR_FRONTEND_REPOSITORY (must match opentofu var.ecr_frontend_repository)
+#
+# Required repository secrets (choose one auth method):
+# - AWS_ROLE_TO_ASSUME (recommended, OIDC)
+# OR
+# - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY (fallback)
+# - AWS_SESSION_TOKEN (optional, for temporary credentials)
+
+name: Build Images
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: build-images
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'eu-west-1' }}
+  ECR_BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
+  ECR_FRONTEND_REPOSITORY: ${{ vars.ECR_FRONTEND_REPOSITORY }}
+
+jobs:
+  build:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.head_commit.message, 'feat(images):')
+    runs-on: ubuntu-latest
+    env:
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        if: env.AWS_ROLE_TO_ASSUME != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS credentials (access keys fallback)
+        if: env.AWS_ROLE_TO_ASSUME == ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push backend image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            -t ${ECR_REGISTRY}/${ECR_BACKEND_REPOSITORY}:${IMAGE_TAG} \
+            -t ${ECR_REGISTRY}/${ECR_BACKEND_REPOSITORY}:latest \
+            src/backend
+          docker push ${ECR_REGISTRY}/${ECR_BACKEND_REPOSITORY}:${IMAGE_TAG}
+          docker push ${ECR_REGISTRY}/${ECR_BACKEND_REPOSITORY}:latest
+
+      - name: Build and push frontend image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --build-arg VITE_API_URL=/api \
+            -t ${ECR_REGISTRY}/${ECR_FRONTEND_REPOSITORY}:${IMAGE_TAG} \
+            -t ${ECR_REGISTRY}/${ECR_FRONTEND_REPOSITORY}:latest \
+            src/frontend
+          docker push ${ECR_REGISTRY}/${ECR_FRONTEND_REPOSITORY}:${IMAGE_TAG}
+          docker push ${ECR_REGISTRY}/${ECR_FRONTEND_REPOSITORY}:latest
+
+      - name: Summary
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          echo "## Images Built Successfully" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Backend**: \`${ECR_REGISTRY}/${ECR_BACKEND_REPOSITORY}:${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Frontend**: \`${ECR_REGISTRY}/${ECR_FRONTEND_REPOSITORY}:${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Commit**: \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"

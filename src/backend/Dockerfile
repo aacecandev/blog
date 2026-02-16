@@ -35,6 +35,7 @@ RUN uv pip install \
 ###############################
 # Runtime: Alpine slim image  #
 ###############################
+
 FROM docker.io/python:3.11-alpine AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

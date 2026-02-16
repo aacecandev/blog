@@ -302,17 +302,21 @@ repos:
   - repo: https://github.com/tofuutils/pre-commit-opentofu
     rev: v2.2.2
     hooks:
+
       # Format check
       - id: tofu_fmt
         name: "Terraform: Format check"
         description: "Ensures Terraform files are properly formatted"
         files: ^infra/terraform/.*\.tf$
 
-      # Validate configuration
       - id: tofu_validate
-        name: "Terraform: Validate configuration"
-        description: "Validates Terraform configuration syntax and consistency"
-        files: ^infra/terraform/.*\.tf$
+        args:
+          - --hook-config=--retry-once-with-cleanup=true
+          - --tf-init-args=-upgrade
+
+      - id: tofu_providers_lock
+        args:
+          - --hook-config=--mode=always-regenerate-lockfile
 
       # TFLint - Terraform linter
       - id: tofu_tflint
