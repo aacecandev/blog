@@ -1,6 +1,8 @@
 global:
   imageRegistry: registry.aacecan.com/aacecan/apps/blog
 
+imagePullSecrets: []
+
 backend:
   image:
     repository: ""  # defaults to global.imageRegistry/backend

@@ -87,12 +87,20 @@ deploy:
   script:
     - kubectl config use-context aacecan/apps/blog:k3s-homelab
     - helm registry login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+    - kubectl create namespace blog --dry-run=client -o yaml | kubectl apply -f -
+    - kubectl create secret docker-registry gitlab-registry
+      --namespace blog
+      --docker-server=${CI_REGISTRY}
+      --docker-username=${CI_REGISTRY_USER}
+      --docker-password=${CI_REGISTRY_PASSWORD}
+      --dry-run=client -o yaml | kubectl apply -f -
     - helm upgrade --install blog ${CHART_REGISTRY}/blog
       --version 0.1.0-${CI_COMMIT_SHORT_SHA}
       --namespace blog
       --create-namespace
       --set backend.image.tag=${CI_COMMIT_SHORT_SHA}
       --set frontend.image.tag=${CI_COMMIT_SHORT_SHA}
+      --set 'imagePullSecrets[0].name=gitlab-registry'
       --wait
       --timeout 5m
   only:
