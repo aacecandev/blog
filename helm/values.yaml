@@ -19,8 +19,8 @@ backend:
     DEV_BLOG_S3_PREFIX: "posts/"
     DEV_BLOG_S3_ENDPOINT_URL: "http://seaweedfs-s3.seaweedfs.svc:8333"
     DEV_BLOG_CACHE_TTL_SECONDS: "300"
-    DEV_BLOG_OLLAMA_URL: ""
-    DEV_BLOG_OLLAMA_MODEL: ""
+    DEV_BLOG_OLLAMA_URL: "http://ollama.ollama.svc:11434"
+    DEV_BLOG_OLLAMA_MODEL: "llama3.1:8b"
   envFrom:
     - secretRef:
         name: blog-s3-credentials
