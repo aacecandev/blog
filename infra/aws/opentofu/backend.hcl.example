@@ -1,0 +1,5 @@
+bucket       = "your-opentofu-state-bucket"
+key          = "blog/opentofu.tfstate"
+region       = "eu-west-1"
+encrypt      = true
+use_lockfile = true
