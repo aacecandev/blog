@@ -10,13 +10,20 @@ backend:
     pullPolicy: IfNotPresent
   replicas: 1
   port: 8000
+  s3:
+    accessKey: ""  # set via CI: --set backend.s3.accessKey=$SEAWEEDFS_ACCESS_KEY
+    secretKey: ""  # set via CI: --set backend.s3.secretKey=$SEAWEEDFS_SECRET_KEY
   env:
-    DEV_BLOG_CONTENT_DIR: /app/content/posts
-    DEV_BLOG_S3_BUCKET: ""
-    DEV_BLOG_S3_PREFIX: ""
+    DEV_BLOG_CONTENT_DIR: ""
+    DEV_BLOG_S3_BUCKET: blog-content
+    DEV_BLOG_S3_PREFIX: "posts/"
+    DEV_BLOG_S3_ENDPOINT_URL: "http://seaweedfs-s3.seaweedfs.svc:8333"
     DEV_BLOG_CACHE_TTL_SECONDS: "300"
     DEV_BLOG_OLLAMA_URL: ""
     DEV_BLOG_OLLAMA_MODEL: ""
+  envFrom:
+    - secretRef:
+        name: blog-s3-credentials
   resources:
     requests:
       cpu: 10m

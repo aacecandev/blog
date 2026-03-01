@@ -96,6 +96,8 @@ deploy:
       --set backend.image.tag=latest
       --set frontend.image.tag=latest
       --set 'imagePullSecrets[0].name=gitlab-registry'
+      --set backend.s3.accessKey=${SEAWEEDFS_ACCESS_KEY}
+      --set backend.s3.secretKey=${SEAWEEDFS_SECRET_KEY}
       --wait
       --timeout 5m
   rules:
