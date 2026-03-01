@@ -35,8 +35,20 @@ class Settings(BaseSettings):
     environment: Literal["local", "dev", "staging", "prod"] = Field(default="local")
     log_level: str = Field(default="INFO")
 
-    # AWS/S3 Configuration
+    # S3-compatible storage (AWS S3 or SeaweedFS/MinIO)
     aws_region: str = Field(default="eu-west-1")
+    s3_endpoint_url: str = Field(
+        default="",
+        description="Custom S3 endpoint for SeaweedFS/MinIO.",
+    )
+    s3_access_key: str = Field(
+        default="",
+        description="Override AWS_ACCESS_KEY_ID for non-AWS S3.",
+    )
+    s3_secret_key: str = Field(
+        default="",
+        description="Override AWS_SECRET_ACCESS_KEY for non-AWS S3.",
+    )
     s3_bucket: str = Field(default="")
     s3_prefix: str = Field(default="posts/")
 
@@ -100,7 +112,10 @@ def setup_logging(settings: Settings) -> logging.Logger:
 
     if settings.environment == "local":
         # More detailed format for local development
-        log_format = "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
+        log_format = (
+            "%(asctime)s - %(name)s - %(levelname)s"
+            " - %(filename)s:%(lineno)d - %(message)s"
+        )
 
     logging.basicConfig(
         level=getattr(logging, settings.log_level.upper(), logging.INFO),

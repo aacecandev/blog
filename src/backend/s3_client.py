@@ -1,7 +1,8 @@
-"""AWS S3 client utilities for blog content storage.
+"""S3-compatible storage client for blog content.
 
 This module provides S3 operations with singleton client pattern,
 comprehensive error handling, and caching of slug-to-key mappings.
+Works with AWS S3, SeaweedFS, and MinIO via optional endpoint_url.
 """
 
 from __future__ import annotations
@@ -36,8 +37,15 @@ def get_s3_client() -> BaseClient:
     """
     global _s3_client
     if _s3_client is None:
+        kwargs: dict[str, str] = {"region_name": settings.aws_region}
+        if settings.s3_endpoint_url:
+            kwargs["endpoint_url"] = settings.s3_endpoint_url
+            logger.debug("Using custom S3 endpoint: %s", settings.s3_endpoint_url)
+        if settings.s3_access_key:
+            kwargs["aws_access_key_id"] = settings.s3_access_key
+            kwargs["aws_secret_access_key"] = settings.s3_secret_key
         logger.debug("Creating new S3 client for region: %s", settings.aws_region)
-        _s3_client = boto3.client("s3", region_name=settings.aws_region)
+        _s3_client = boto3.client("s3", **kwargs)
     return _s3_client
 
 
