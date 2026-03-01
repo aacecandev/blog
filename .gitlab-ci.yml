@@ -79,12 +79,13 @@ publish-chart:
 deploy:
   stage: deploy
   image:
-    name: alpine/helm:3.17.3
+    name: dtzar/helm-kubectl:3.17.3
     entrypoint: [""]
   tags:
     - aacecandev
     - proxmox
   script:
+    - kubectl config use-context aacecan/apps/blog:k3s-homelab
     - helm registry login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
     - helm upgrade --install blog ${CHART_REGISTRY}/blog
       --version 0.1.0-${CI_COMMIT_SHORT_SHA}
