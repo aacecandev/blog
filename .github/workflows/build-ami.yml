@@ -13,8 +13,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "packer/**"
   workflow_dispatch:
     inputs:
       aws_region:
@@ -35,6 +33,9 @@ env:
 
 jobs:
   build:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.head_commit.message, 'feat(packer):')
     runs-on: ubuntu-latest
     env:
       AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
@@ -73,7 +74,7 @@ jobs:
 
       - name: Packer validate
         working-directory: packer
-        run: packer validate -var="aws_region=${AWS_REGION}" .
+        run: packer validate -var="aws_region=${AWS_REGION}" -var="git_sha=${GITHUB_SHA}" .
 
       - name: Packer build
         id: build
@@ -83,6 +84,7 @@ jobs:
 
           packer build \
             -var="aws_region=${AWS_REGION}" \
+            -var="git_sha=${GITHUB_SHA}" \
             -color=false \
             . | tee packer-output.log
 
@@ -98,3 +100,40 @@ jobs:
           echo "- **AMI ID**: \`${AMI_ID}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Region**: \`${AWS_REGION}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Commit**: \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cleanup old AMIs (keep last 3)
+        if: success()
+        env:
+          AMI_KEEP_COUNT: "3"
+        run: |
+          set -euo pipefail
+
+          # List all dev-blog AMIs sorted by creation date (oldest first)
+          AMIS=$(aws ec2 describe-images \
+            --owners self \
+            --filters \
+              "Name=tag:Project,Values=dev-blog" \
+              "Name=tag:ManagedBy,Values=packer" \
+            --query "sort_by(Images, &CreationDate)[:-${AMI_KEEP_COUNT}].[ImageId,BlockDeviceMappings[0].Ebs.SnapshotId,CreationDate]" \
+            --output text)
+
+          if [ -z "${AMIS}" ]; then
+            echo "No old AMIs to clean up (${AMI_KEEP_COUNT} or fewer exist)."
+            exit 0
+          fi
+
+          DEREGISTERED=0
+          while IFS=$'\t' read -r AMI_ID SNAPSHOT_ID CREATED; do
+            echo "Deregistering ${AMI_ID} (created: ${CREATED})..."
+            aws ec2 deregister-image --image-id "${AMI_ID}"
+
+            if [ -n "${SNAPSHOT_ID}" ] && [ "${SNAPSHOT_ID}" != "None" ]; then
+              echo "  Deleting snapshot ${SNAPSHOT_ID}..."
+              aws ec2 delete-snapshot --snapshot-id "${SNAPSHOT_ID}"
+            fi
+
+            DEREGISTERED=$((DEREGISTERED + 1))
+          done <<< "${AMIS}"
+
+          echo "## AMI Cleanup" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Deregistered **${DEREGISTERED}** old AMI(s), keeping last **${AMI_KEEP_COUNT}**" >> "$GITHUB_STEP_SUMMARY"
