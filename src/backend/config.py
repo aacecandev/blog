@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     # Local development: if set, read Markdown from this directory instead of S3
     content_dir: str = Field(default="")
 
+    # Ollama / AI
+    ollama_url: str = Field(default="http://localhost:11434")
+    ollama_model: str = Field(default="llama3.1:8b")
+
     # Caching
     cache_ttl_seconds: int = Field(default=300, ge=0, le=86400)
 

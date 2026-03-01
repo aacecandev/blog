@@ -30,7 +30,8 @@ RUN uv pip install \
     PyYAML==6.0.1 \
     cachetools==5.3.3 \
     pydantic-settings==2.4.0 \
-    python-dotenv==1.0.1
+    python-dotenv==1.0.1 \
+    httpx>=0.25.2
 
 ###############################
 # Runtime: Alpine slim image  #
