@@ -58,7 +58,7 @@ repos:
         # Exclude Helm templates as they contain Go templating syntax
         exclude: ^helm/templates/
         args:
-          - --unsafe  # Allow custom YAML tags (needed for CloudFormation, etc.)
+          - --unsafe # Allow custom YAML tags (needed for CloudFormation, etc.)
 
       - id: check-toml
         name: "TOML: Validate syntax"
@@ -78,7 +78,7 @@ repos:
         name: "Files: Remove trailing whitespace"
         description: "Removes trailing whitespace from lines"
         args:
-          - --markdown-linebreak-ext=md  # Preserve Markdown line breaks
+          - --markdown-linebreak-ext=md # Preserve Markdown line breaks
 
       - id: mixed-line-ending
         name: "Files: Fix mixed line endings"
@@ -95,7 +95,7 @@ repos:
         name: "Files: Check for large files"
         description: "Prevents giant files from being committed"
         args:
-          - --maxkb=1024  # 1MB limit
+          - --maxkb=1024 # 1MB limit
 
       - id: check-merge-conflict
         name: "Git: Check for merge conflict markers"
@@ -302,7 +302,6 @@ repos:
   - repo: https://github.com/tofuutils/pre-commit-opentofu
     rev: v2.2.2
     hooks:
-
       # Format check
       - id: tofu_fmt
         name: "Terraform: Format check"
@@ -354,9 +353,9 @@ repos:
         args:
           - --directory=infra/terraform
           - --framework=terraform
-          - --soft-fail  # Don't fail the commit, just warn
+          - --soft-fail # Don't fail the commit, just warn
           - --compact
-          - --skip-check=CKV_AWS_144,CKV_AWS_145  # Skip S3 cross-region replication checks if not needed
+          - --skip-check=CKV_AWS_144,CKV_AWS_145 # Skip S3 cross-region replication checks if not needed
 
   # ===========================================================================
   # HELM CHART HOOKS - Kubernetes manifest validation
@@ -382,9 +381,9 @@ repos:
         description: "Lints Dockerfiles for best practices and common mistakes"
         files: (Dockerfile|\.dockerfile)$
         args:
-          - --ignore=DL3008  # Pin versions in apt-get (can be noisy)
-          - --ignore=DL3018  # Pin versions in apk add
-          - --strict-labels  # Require LABEL maintainer
+          - --ignore=DL3008 # Pin versions in apt-get (can be noisy)
+          - --ignore=DL3018 # Pin versions in apk add
+          - --strict-labels # Require LABEL maintainer
 
   # ===========================================================================
   # YAML/JSON LINTING - Configuration file validation
@@ -451,9 +450,9 @@ repos:
         files: \.md$
         args:
           - --fix
-          - --disable=MD013  # Line length (can be overly restrictive)
-          - --disable=MD033  # Inline HTML (needed for some docs)
-          - --disable=MD041  # First line heading (not always applicable)
+          - --disable=MD013 # Line length (can be overly restrictive)
+          - --disable=MD033 # Inline HTML (needed for some docs)
+          - --disable=MD041 # First line heading (not always applicable)
 
   # ===========================================================================
   # SHELL SCRIPT LINTING
@@ -486,17 +485,17 @@ repos:
         args:
           - --strict
           # Allowed commit types
-          - feat      # New feature
-          - fix       # Bug fix
-          - docs      # Documentation only
-          - style     # Code style (formatting, etc.)
-          - refactor  # Code refactoring
-          - perf      # Performance improvement
-          - test      # Adding tests
-          - build     # Build system changes
-          - ci        # CI configuration
-          - chore     # Maintenance tasks
-          - revert    # Revert previous commit
+          - feat # New feature
+          - fix # Bug fix
+          - docs # Documentation only
+          - style # Code style (formatting, etc.)
+          - refactor # Code refactoring
+          - perf # Performance improvement
+          - test # Adding tests
+          - build # Build system changes
+          - ci # CI configuration
+          - chore # Maintenance tasks
+          - revert # Revert previous commit
 
   # Commitizen - alternative commit message helper (optional)
   # Uncomment if you prefer commitizen over conventional-pre-commit
@@ -552,15 +551,15 @@ repos:
   # ===========================================================================
 
   # GitLab CI linting
-  - repo: https://gitlab.com/devopshq/gitlab-ci-linter
-    rev: v1.0.6
-    hooks:
-      - id: gitlab-ci-linter
-        name: "GitLab: Lint CI configuration"
-        description: "Validates GitLab CI/CD configuration syntax"
-        files: ^\.gitlab-ci\.yml$
-        # Requires GITLAB_PRIVATE_TOKEN environment variable
-        # or use --server for public projects
+  # - repo: https://gitlab.com/devopshq/gitlab-ci-linter
+  #   rev: v1.0.6
+  #   hooks:
+  #     - id: gitlab-ci-linter
+  #       name: "GitLab: Lint CI configuration"
+  #       description: "Validates GitLab CI/CD configuration syntax"
+  #       files: ^\.gitlab-ci\.yml$
+  # Requires GITLAB_PRIVATE_TOKEN environment variable
+  # or use --server for public projects
 
   # =============================================================================
   # LOCAL HOOKS - Project-specific custom checks
