@@ -2,41 +2,52 @@ stages:
   - build
 
 variables:
-  DOCKER_TLS_CERTDIR: "/certs"
+  STORAGE_DRIVER: vfs
+  BUILDAH_STORAGE: ${CI_PROJECT_DIR}/.buildah
   BACKEND_IMAGE: ${CI_REGISTRY_IMAGE}/backend
   FRONTEND_IMAGE: ${CI_REGISTRY_IMAGE}/frontend
 
 .build-template: &build-template
   stage: build
-  image: docker:27
-  services:
-    - docker:27-dind
+  image: quay.io/buildah/stable
   tags:
     - aacecandev
     - proxmox
+  cache:
+    key: ${CI_JOB_NAME}
+    paths:
+      - .buildah/
   before_script:
-    - until docker info >/dev/null 2>&1; do sleep 1; done
-    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+    - mkdir -p ${BUILDAH_STORAGE}/storage ${BUILDAH_STORAGE}/runroot
+    - |
+      cat > /tmp/storage.conf <<EOF
+      [storage]
+      driver = "vfs"
+      graphroot = "${BUILDAH_STORAGE}/storage"
+      runroot = "${BUILDAH_STORAGE}/runroot"
+      EOF
+    - export CONTAINERS_STORAGE_CONF=/tmp/storage.conf
+    - buildah login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
 
 build-backend:
   <<: *build-template
   script:
-    - docker build
+    - buildah bud --layers
       -t ${BACKEND_IMAGE}:${CI_COMMIT_SHORT_SHA}
       -t ${BACKEND_IMAGE}:latest
       -f src/backend/Dockerfile
       src/backend
-    - docker push ${BACKEND_IMAGE}:${CI_COMMIT_SHORT_SHA}
-    - docker push ${BACKEND_IMAGE}:latest
+    - buildah push ${BACKEND_IMAGE}:${CI_COMMIT_SHORT_SHA}
+    - buildah push ${BACKEND_IMAGE}:latest
 
 build-frontend:
   <<: *build-template
   script:
-    - docker build
+    - buildah bud --layers
       --build-arg VITE_API_URL=/api
       -t ${FRONTEND_IMAGE}:${CI_COMMIT_SHORT_SHA}
       -t ${FRONTEND_IMAGE}:latest
       -f src/frontend/Dockerfile
       src/frontend
-    - docker push ${FRONTEND_IMAGE}:${CI_COMMIT_SHORT_SHA}
-    - docker push ${FRONTEND_IMAGE}:latest
+    - buildah push ${FRONTEND_IMAGE}:${CI_COMMIT_SHORT_SHA}
+    - buildah push ${FRONTEND_IMAGE}:latest
