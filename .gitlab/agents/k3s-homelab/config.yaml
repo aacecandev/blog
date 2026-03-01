@@ -1,0 +1,9 @@
+user_access:
+  access_as:
+    agent: {}
+  projects:
+    - id: aacecan/apps/blog
+
+ci_access:
+  projects:
+    - id: aacecan/apps/blog
