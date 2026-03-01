@@ -116,7 +116,6 @@ sync-posts:
     SEAWEEDFS_ENDPOINT: http://seaweedfs-s3.seaweedfs:8333
     SEAWEEDFS_BUCKET: blog-content
   script:
-    - aws --endpoint-url ${SEAWEEDFS_ENDPOINT} s3 mb s3://${SEAWEEDFS_BUCKET} || true
     - aws --endpoint-url ${SEAWEEDFS_ENDPOINT} s3 sync
       content/posts/ s3://${SEAWEEDFS_BUCKET}/posts/
       --delete
