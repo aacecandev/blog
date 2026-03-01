@@ -1,5 +1,6 @@
 import { Routes, Route, Link } from "react-router-dom";
 import ErrorBoundary from "./components/ErrorBoundary";
+import AskAI from "./components/AskAI";
 import Home from "./pages/Home";
 import Post from "./pages/Post";
 import About from "./pages/About";
@@ -37,6 +38,7 @@ export default function App() {
           </footer>
         </div>
       </div>
+      <AskAI />
     </ErrorBoundary>
   );
 }
