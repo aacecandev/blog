@@ -12,6 +12,8 @@ services:
       DEV_BLOG_S3_BUCKET: ""
       DEV_BLOG_S3_PREFIX: ""
       DEV_BLOG_CACHE_TTL_SECONDS: 0
+      DEV_BLOG_OLLAMA_URL: "http://ollama:11434"
+      DEV_BLOG_OLLAMA_MODEL: "qwen2.5:3b"
     volumes:
       - ./src/backend:/app/backend
       - ./content/posts:/app/content/posts:ro
@@ -30,7 +32,7 @@ services:
       context: ./src/frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: "http://localhost:8000"
+        VITE_API_URL: "/api"
     # user: "1000:1000"
     cap_add:
       - NET_BIND_SERVICE
@@ -41,6 +43,18 @@ services:
     depends_on:
       - api
 
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - dev-blog-network
+
 networks:
   dev-blog-network:
     driver: bridge
+
+volumes:
+  ollama-data:
