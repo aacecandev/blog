@@ -1,0 +1,70 @@
+# Syncs blog posts from content/posts/ to S3.
+# Trigger: merge to main with commit message matching "feat(posts): ..."
+#          or manual dispatch.
+#
+# Required repository variables:
+# - AWS_REGION
+# - S3_BUCKET_NAME
+#
+# Required repository secrets (choose one auth method):
+# - AWS_ROLE_TO_ASSUME (recommended, OIDC)
+# OR
+# - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY (fallback)
+# - AWS_SESSION_TOKEN (optional, for temporary credentials)
+
+name: Sync Posts to S3
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: sync-posts
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'eu-west-1' }}
+  S3_BUCKET_NAME: ${{ vars.S3_BUCKET_NAME || secrets.S3_BUCKET_NAME }}
+
+jobs:
+  sync:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.head_commit.message, 'feat(posts):')
+    runs-on: ubuntu-latest
+    env:
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        if: env.AWS_ROLE_TO_ASSUME != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS credentials (access keys fallback)
+        if: env.AWS_ROLE_TO_ASSUME == ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Sync posts to S3
+        run: |
+          aws s3 sync content/posts/ s3://${S3_BUCKET_NAME}/posts/ --delete --size-only
+
+          echo "## Posts Synced" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Bucket**: \`s3://${S3_BUCKET_NAME}/posts/\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Commit**: \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
