@@ -7,6 +7,7 @@ in S3 or local filesystem, with caching, pagination, and proper error handling.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from typing import Annotated
 
@@ -15,7 +16,7 @@ import yaml
 from fastapi import FastAPI, HTTPException, Path, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from .cache import (
     clear_all_caches,
@@ -30,6 +31,7 @@ from .middleware import RateLimitMiddleware, RequestLoggingMiddleware
 from .telemetry import init_telemetry, instrument_fastapi
 from .content_store import ContentError, list_post_slugs, load_post_by_slug
 from .models import (
+    AskRequest,
     ErrorResponse,
     HealthResponse,
     PostDetail,
@@ -37,6 +39,7 @@ from .models import (
     PostMeta,
     PostSummary,
 )
+from .ollama_client import OllamaError, stream_chat
 from .s3_client import S3Error
 
 # Slug validation pattern for path parameter
@@ -119,6 +122,16 @@ async def s3_error_handler(request: Request, exc: S3Error) -> JSONResponse:
     return JSONResponse(
         status_code=503,
         content={"detail": "Storage service temporarily unavailable", "error_code": "S3_ERROR"},
+    )
+
+
+@app.exception_handler(OllamaError)
+async def ollama_error_handler(request: Request, exc: OllamaError) -> JSONResponse:
+    """Handle Ollama errors with 503 Service Unavailable."""
+    logger.error("Ollama error on %s: %s", request.url.path, str(exc))
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "AI service temporarily unavailable", "error_code": "OLLAMA_ERROR"},
     )
 
 
@@ -386,3 +399,67 @@ async def get_post(
     response = JSONResponse(content=detail.model_dump())
     etag = generate_etag(content)
     return add_cache_headers(response, etag)
+
+
+# =============================================================================
+# AI / Ask Endpoint
+# =============================================================================
+
+MAX_CONTEXT_CHARS = 12_000
+
+
+@app.post("/ask", tags=["AI"])
+async def ask(body: AskRequest) -> StreamingResponse:
+    """Stream an AI-generated answer, optionally using a blog post as context.
+
+    Sends the question (and optional blog content) to Ollama and streams
+    back NDJSON lines: ``{"token": "..."}`` per token, ``{"error": "..."}`` on failure.
+    """
+    messages: list[dict[str, str]] = []
+
+    # Build system prompt with blog context if slug provided
+    if body.slug:
+        try:
+            raw = load_post_by_slug(body.slug)
+            meta_dict, content = parse_frontmatter(raw, body.slug)
+            title = meta_dict.get("title", body.slug)
+            context = content[:MAX_CONTEXT_CHARS]
+            messages.append({
+                "role": "system",
+                "content": (
+                    f"You are a helpful assistant for a developer blog. "
+                    f"The user is reading the post titled \"{title}\". "
+                    f"Use the following post content as context to answer their question.\n\n"
+                    f"---\n{context}\n---"
+                ),
+            })
+        except (FileNotFoundError, ValueError):
+            logger.debug("Could not load post %s for context, continuing without it", body.slug)
+            messages.append({
+                "role": "system",
+                "content": "You are a helpful assistant for a developer blog.",
+            })
+    else:
+        messages.append({
+            "role": "system",
+            "content": "You are a helpful assistant for a developer blog.",
+        })
+
+    messages.append({"role": "user", "content": body.question})
+
+    async def _generate():  # type: ignore[no-untyped-def]
+        try:
+            async for token in stream_chat(messages):
+                yield json.dumps({"token": token}) + "\n"
+        except OllamaError as exc:
+            logger.error("Ollama streaming error: %s", exc)
+            yield json.dumps({"error": str(exc)}) + "\n"
+
+    return StreamingResponse(
+        _generate(),
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

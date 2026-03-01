@@ -103,5 +103,12 @@ class ErrorResponse(BaseModel):
     error_code: str | None = None
 
 
+class AskRequest(BaseModel):
+    """Request body for the AI question endpoint."""
+
+    question: str = Field(..., min_length=1, max_length=2000)
+    slug: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]+$", max_length=200)
+
+
 # Type alias for validated slug parameter
 ValidatedSlug = Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]+$", max_length=200)]
