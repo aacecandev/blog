@@ -1,5 +1,6 @@
 stages:
   - build
+  - sync
   - publish
   - deploy
 
@@ -73,8 +74,9 @@ publish-chart:
     - helm registry login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
     - helm package ./helm --version 0.1.0-${CI_COMMIT_SHORT_SHA} --app-version ${CI_COMMIT_SHORT_SHA}
     - helm push blog-0.1.0-${CI_COMMIT_SHORT_SHA}.tgz ${CHART_REGISTRY}
-  only:
-    - main
+  rules:
+    - changes:
+        - helm/**/*
 
 deploy:
   stage: deploy
@@ -96,5 +98,29 @@ deploy:
       --set 'imagePullSecrets[0].name=gitlab-registry'
       --wait
       --timeout 5m
-  only:
-    - main
+  rules:
+    - changes:
+        - helm/**/*
+
+sync-posts:
+  stage: sync
+  image:
+    name: amazon/aws-cli:latest
+    entrypoint: [""]
+  tags:
+    - aacecandev
+    - proxmox
+  variables:
+    AWS_ACCESS_KEY_ID: ${SEAWEEDFS_ACCESS_KEY}
+    AWS_SECRET_ACCESS_KEY: ${SEAWEEDFS_SECRET_KEY}
+    SEAWEEDFS_ENDPOINT: http://seaweedfs-s3.seaweedfs:8333
+    SEAWEEDFS_BUCKET: blog-content
+  script:
+    - aws --endpoint-url ${SEAWEEDFS_ENDPOINT} s3 mb s3://${SEAWEEDFS_BUCKET} || true
+    - aws --endpoint-url ${SEAWEEDFS_ENDPOINT} s3 sync
+      content/posts/ s3://${SEAWEEDFS_BUCKET}/posts/
+      --delete
+      --no-sign-request
+  rules:
+    - changes:
+        - content/posts/**/*
