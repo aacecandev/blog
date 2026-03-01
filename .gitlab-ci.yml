@@ -120,7 +120,6 @@ sync-posts:
     - aws --endpoint-url ${SEAWEEDFS_ENDPOINT} s3 sync
       content/posts/ s3://${SEAWEEDFS_BUCKET}/posts/
       --delete
-      --no-sign-request
   rules:
     - changes:
         - content/posts/**/*
