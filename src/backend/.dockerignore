@@ -7,3 +7,4 @@ __pycache__/
 .gitignore
 README.md
 tests/
+AGENTS.md
