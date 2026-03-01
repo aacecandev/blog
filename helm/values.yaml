@@ -1,0 +1,47 @@
+global:
+  imageRegistry: registry.aacecan.com/aacecan/apps/blog
+
+backend:
+  image:
+    repository: ""  # defaults to global.imageRegistry/backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  port: 8000
+  env:
+    DEV_BLOG_CONTENT_DIR: /app/content/posts
+    DEV_BLOG_S3_BUCKET: ""
+    DEV_BLOG_S3_PREFIX: ""
+    DEV_BLOG_CACHE_TTL_SECONDS: "300"
+    DEV_BLOG_OLLAMA_URL: ""
+    DEV_BLOG_OLLAMA_MODEL: ""
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+frontend:
+  image:
+    repository: ""  # defaults to global.imageRegistry/frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  port: 80
+  resources:
+    requests:
+      cpu: 5m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+httproute:
+  enabled: true
+  hostname: blog.aacecan.com
+  gateway:
+    name: main
+    namespace: gateway-system
+    sectionName: https

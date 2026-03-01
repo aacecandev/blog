@@ -1,0 +1,6 @@
+apiVersion: v2
+name: blog
+description: Personal dev blog - FastAPI backend + React frontend
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

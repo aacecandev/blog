@@ -1,11 +1,14 @@
 stages:
   - build
+  - publish
+  - deploy
 
 variables:
   STORAGE_DRIVER: vfs
   BUILDAH_STORAGE: ${CI_PROJECT_DIR}/.buildah
   BACKEND_IMAGE: ${CI_REGISTRY_IMAGE}/backend
   FRONTEND_IMAGE: ${CI_REGISTRY_IMAGE}/frontend
+  CHART_REGISTRY: oci://${CI_REGISTRY_IMAGE}/charts
 
 .build-template: &build-template
   stage: build
@@ -31,6 +34,9 @@ variables:
 
 build-backend:
   <<: *build-template
+  rules:
+    - changes:
+        - src/backend/**/*
   script:
     - buildah bud --layers
       -t ${BACKEND_IMAGE}:${CI_COMMIT_SHORT_SHA}
@@ -42,6 +48,9 @@ build-backend:
 
 build-frontend:
   <<: *build-template
+  rules:
+    - changes:
+        - src/frontend/**/*
   script:
     - buildah bud --layers
       --build-arg VITE_API_URL=/api
@@ -51,3 +60,39 @@ build-frontend:
       src/frontend
     - buildah push ${FRONTEND_IMAGE}:${CI_COMMIT_SHORT_SHA}
     - buildah push ${FRONTEND_IMAGE}:latest
+
+publish-chart:
+  stage: publish
+  image:
+    name: alpine/helm:3.17.3
+    entrypoint: [""]
+  tags:
+    - aacecandev
+    - proxmox
+  script:
+    - helm registry login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+    - helm package ./helm --version 0.1.0-${CI_COMMIT_SHORT_SHA} --app-version ${CI_COMMIT_SHORT_SHA}
+    - helm push blog-0.1.0-${CI_COMMIT_SHORT_SHA}.tgz ${CHART_REGISTRY}
+  only:
+    - main
+
+deploy:
+  stage: deploy
+  image:
+    name: alpine/helm:3.17.3
+    entrypoint: [""]
+  tags:
+    - aacecandev
+    - proxmox
+  script:
+    - helm registry login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+    - helm upgrade --install blog ${CHART_REGISTRY}/blog
+      --version 0.1.0-${CI_COMMIT_SHORT_SHA}
+      --namespace blog
+      --create-namespace
+      --set backend.image.tag=${CI_COMMIT_SHORT_SHA}
+      --set frontend.image.tag=${CI_COMMIT_SHORT_SHA}
+      --wait
+      --timeout 5m
+  only:
+    - main
