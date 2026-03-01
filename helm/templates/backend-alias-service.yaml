@@ -1,0 +1,21 @@
+---
+# Alias Service so the frontend nginx can resolve "api:8000"
+# (matches the docker-compose service name used in nginx.conf)
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  labels:
+    {{- include "blog.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend-alias
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.backend.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ include "blog.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: backend
