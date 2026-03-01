@@ -12,8 +12,8 @@ WORKDIR /app
 
 # Install build deps + download uv binary directly (no ghcr.io auth needed)
 RUN apk add --no-cache \
-      ca-certificates tzdata curl \
-      build-base libffi-dev openssl-dev && \
+    ca-certificates tzdata curl \
+    build-base libffi-dev openssl-dev && \
     curl -LsSf https://astral.sh/uv/install.sh | sh && \
     mv /root/.local/bin/uv /usr/local/bin/uv
 
