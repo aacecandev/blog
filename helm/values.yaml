@@ -7,7 +7,7 @@ backend:
   image:
     repository: ""  # defaults to global.imageRegistry/backend
     tag: latest
-    pullPolicy: IfNotPresent
+    pullPolicy: Always  # latest tags must always pull to avoid stale cache
   replicas: 1
   port: 8000
   s3:
@@ -36,7 +36,7 @@ frontend:
   image:
     repository: ""  # defaults to global.imageRegistry/frontend
     tag: latest
-    pullPolicy: IfNotPresent
+    pullPolicy: Always  # latest tags must always pull to avoid stale cache
   replicas: 1
   port: 80
   resources:
